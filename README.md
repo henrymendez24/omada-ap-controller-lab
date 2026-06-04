@@ -1,70 +1,168 @@
-# TP-Link Omada Controller Setup for AP Management
+# TP-Link Omada Controller Lab — Self-Hosted AP Management on Raspberry Pi 5
 
 ## Objective
-The goal of this lab was to set up a TP-Link Omada Controller to centrally manage my wireless access point instead of only using standalone mode.
+
+Deploy a self-hosted TP-Link Omada Software Controller in Docker on a Raspberry Pi 5 to centrally manage a TP-Link EAP650 access point, replacing standalone mode with full controller-managed operation.
+
+---
 
 ## Lab Environment
-- Controller: Omada Software Controller
-- Access Point: TP-Link AX3000 AP
-- Network: Home lab network
-- Switches:
-  - TP-Link 2.5Gb unmanaged switch
-  - TP-Link 1Gb managed switch
-- Router/Firewall: OPNsense / Xfinity gateway during testing
 
-## Why I Set This Up
-Before using the controller, the AP was managed directly through its web interface.  
-Using the Omada Controller allows me to manage wireless settings, adoption, SSIDs, radio settings, firmware, and monitoring from one place.
+| Component | Details |
+|-----------|---------|
+| Controller Host | Raspberry Pi 5 (Proxmox, Docker via LXC) |
+| Access Point | TP-Link EAP650 (AX3000) |
+| Controller Software | Omada Software Controller v5.15.24 |
+| Docker Image | `mbentley/omada-controller:latest` |
+| Network | Home lab — OPNsense firewall, LAN `192.168.1.0/24` |
+| Switches | TP-Link 2.5Gb unmanaged, TP-Link 1Gb managed |
 
-## Steps Completed
+---
 
-### 1. Installed/Opened Omada Controller
-I opened the Omada Controller and created a site for my home lab.
+## Why Controller Mode vs Standalone
 
-![Controller Dashboard](screenshots/controller-dashboard.png)
+Before this lab, the EAP650 was managed through its own web interface. That works fine for a single AP but you lose centralized visibility, roaming configuration, and the ability to push consistent SSIDs and radio settings across multiple devices.
 
-### 2. Reset the Access Point
-The AP was reset so it could be adopted by the controller.
+The Omada Controller adds:
+- Unified dashboard for all managed devices
+- Site-level SSID and radio configuration
+- Client tracking and network topology view
+- Firmware management from one place
+- Cloud access (optional) for remote management
 
-![AP Reset](screenshots/ap-reset.png)
+---
 
-### 3. Adopted the AP
-The controller detected the AP, and I attempted to adopt it into the site.
+## Steps
 
-![AP Adoption](screenshots/ap-adoption.png)
+### 1. Initial Docker Deployment (Bridge Mode)
 
-### 4. Configured Wireless Networks
-I configured separate wireless networks for 2.4GHz and 5GHz.
+The controller was initially launched in standard bridge networking mode. It came up healthy and was accessible via the web UI at `https://192.168.1.186:8043`.
 
-Example SSIDs:
-- HenryNet2G
-- HenryNet5G
+```bash
+docker run -d \
+  --name omada-controller \
+  --restart unless-stopped \
+  -e TZ=America/Chicago \
+  -v omada-data:/opt/tplink/EAPController/data \
+  -v omada-work:/opt/tplink/EAPController/work \
+  -v omada-logs:/opt/tplink/EAPController/logs \
+  mbentley/omada-controller
+```
 
-![Wireless Networks](screenshots/wireless-networks.png)
+![Docker controller initial setup](screenshots/Docker_Omada_Controller.png)
 
-### 5. Verified AP Status
-After adoption, I verified that the AP showed as connected/managed inside the controller.
+At this point the controller was running alongside other containers: nginx-proxy-manager, uptime-kuma, netdata, portainer, grafana, and cowrie.
 
-![AP Connected](screenshots/ap-connected.png)
+![Docker containers before host mode](screenshots/02-docker-containers-before-host-mode.png)
+
+---
+
+### 2. AP Discovery Problem — Bridge Networking Limitation
+
+After logging into the controller and setting up a site, the EAP650 was not being discovered. The controller uses **multicast and broadcast** to find APs on the local network. In bridge mode, Docker NATting blocks this traffic — the controller can't see devices outside the container network.
+
+**Fix: Switch to host networking.**
+
+The container was stopped, removed, and relaunched with `--network host`:
+
+```bash
+docker stop omada-controller
+docker rm omada-controller
+
+docker run -d \
+  --name omada-controller \
+  --restart unless-stopped \
+  --network host \
+  -e TZ=America/Chicago \
+  -v omada-data:/opt/tplink/EAPController/data \
+  -v omada-work:/opt/tplink/EAPController/work \
+  -v omada-logs:/opt/tplink/EAPController/logs \
+  mbentley/omada-controller
+```
+
+![Host network run command](screenshots/omada-controller-host-network-run-command.png)
+
+With host networking, the controller binds directly to the Pi's network interface and can send/receive the multicast traffic needed for AP discovery.
+
+![Docker containers after switching to host mode](screenshots/03-docker-containers-after-host-mode.png)
+
+---
+
+### 3. Controller Setup and Cloud Link
+
+Once running in host mode, the controller came back up and was linked to TP-Link's cloud for optional remote access. The cloud account allows managing the controller through the Omada app or portal without needing to be on the local network.
+
+![Omada controller cloud view](screenshots/Docker_Omada_Controller.png)
+
+The controller showed up under **Cloud Management** in the portal as `Omada Controller_12FB28` running Omada Standard v5.15.24. It also appears under **Local Management** accessible directly at `192.168.1.186`.
+
+---
+
+### 4. AP Adoption
+
+With host networking active, the EAP650 appeared in the controller's device list. It was adopted into the `HenryOffice` site and came up as **Connected**.
+
+![AP connected and managed](screenshots/AP_Connected.png)
+
+Device details visible in the controller:
+- MAC: `BC-60-BC-7C-17-F4`
+- IP: `192.168.1.122`
+- Model: EAP650
+- Status: Connected
+- Uptime: stable
+
+---
+
+### 5. Global Dashboard
+
+The global view shows the full site summary including device counts, client counts, and alert status across all managed sites.
+
+![Global dashboard](screenshots/global_dashboard.png)
+
+---
+
+### 6. Network Topology
+
+The topology view maps the EAP650 and its connected clients. Five clients visible: `65TCLRokuTV`, `58HisenseRokuTV`, `HS300`, `iPad`, and `Henry-s-S25-Ultra`. Most are on 5GHz; the HS300 smart plug is on 2.4GHz. The AP is shown without a gateway since OPNsense handles routing separately and was not adopted into Omada.
+
+![Network topology](screenshots/Topology.png)
+
+---
 
 ## Issues Encountered
-During setup, the AP did not adopt right away. Possible causes included:
-- AP was still tied to standalone mode
-- Wrong device credentials
-- Controller URL/IP mismatch
-- AP needed to be reset again
-- Local controller account and cloud account were different
 
-## Troubleshooting Performed
-- Reset the AP
-- Checked the AP IP address
-- Checked controller access
-- Verified local and cloud login differences
-- Reviewed 2.4GHz and 5GHz wireless settings
-- Confirmed whether the controller combined or separated Wi-Fi bands
+**AP not discovered in bridge mode**
+The controller running in Docker bridge mode cannot reach the LAN broadcast/multicast traffic needed to discover APs. Switching to `--network host` resolved this. This is a known limitation of running Omada in Docker and is documented in the `mbentley/omada-controller` image README.
+
+**AP adoption initial failure**
+After switching to host mode, the AP still didn't adopt immediately. The AP needed a factory reset to clear any residual standalone-mode state before the controller could take ownership.
+
+**URL mismatch after container recreation**
+After recreating the container, the controller URL changed (port binding behavior differs slightly between bridge and host mode). Had to update the URL in the Omada cloud portal to match.
+
+---
 
 ## What I Learned
-This lab helped me understand how wireless AP controllers work. I learned that an AP can be managed in standalone mode or controller mode, but adoption requires the controller to take ownership of the device. I also learned how controller-managed Wi-Fi settings can affect SSIDs, radio bands, and how devices appear connected.
 
-## Proof of Completion
-The screenshots in this repository show the controller setup, AP adoption process, wireless configuration, and final AP status.
+Running Omada in Docker requires host networking if you want AP discovery to work — bridge mode silently breaks multicast. This same issue would apply to any controller software that relies on L2 broadcast discovery (UniFi has the same constraint).
+
+The distinction between **standalone mode** and **controller mode** is meaningful: the AP behaves differently under controller management, and switching requires a reset. You can't just point a standalone-configured AP at a controller and expect it to work cleanly.
+
+Controller-managed SSIDs override anything configured directly on the AP, which is the right behavior for a managed environment but surprising if you're used to standalone mode.
+
+---
+
+## Repository Structure
+
+```
+omada-ap-controller-lab/
+├── screenshots/
+│   ├── Docker_Omada_Controller.png
+│   ├── 02-docker-containers-before-host-mode.png
+│   ├── 03-docker-containers-after-host-mode.png
+│   ├── global_dashboard.png
+│   ├── AP_Connected.png
+│   ├── Topology.png
+│   └── omada-controller-host-network-run-command.png
+└── README.md
+```
