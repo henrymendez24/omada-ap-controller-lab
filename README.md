@@ -49,7 +49,7 @@ docker run -d \
   mbentley/omada-controller
 ```
 
-![Docker controller initial setup](screenshots/Docker_Omada_Controller.png)
+![Docker controller initial setup](screenshots/01-docker-omada-controller.png)
 
 At this point the controller was running alongside other containers: nginx-proxy-manager, uptime-kuma, netdata, portainer, grafana, and cowrie.
 
@@ -80,7 +80,7 @@ docker run -d \
   mbentley/omada-controller
 ```
 
-![Host network run command](screenshots/omada-controller-host-network-run-command.png)
+![Host network run command](screenshots/07-host-network-run-command.png)
 
 With host networking, the controller binds directly to the Pi's network interface and can send/receive the multicast traffic needed for AP discovery.
 
@@ -92,17 +92,14 @@ With host networking, the controller binds directly to the Pi's network interfac
 
 Once running in host mode, the controller came back up and was linked to TP-Link's cloud for optional remote access. The cloud account allows managing the controller through the Omada app or portal without needing to be on the local network.
 
-![Omada controller cloud view](screenshots/Docker_Omada_Controller.png)
-
 The controller showed up under **Cloud Management** in the portal as `Omada Controller_12FB28` running Omada Standard v5.15.24. It also appears under **Local Management** accessible directly at `192.168.1.186`.
 
----
 
 ### 4. AP Adoption
 
 With host networking active, the EAP650 appeared in the controller's device list. It was adopted into the `HenryOffice` site and came up as **Connected**.
 
-![AP connected and managed](screenshots/AP_Connected.png)
+![AP connected and managed](screenshots/05-ap-connected.png)
 
 Device details visible in the controller:
 - MAC: `BC-60-BC-7C-17-F4`
@@ -117,7 +114,7 @@ Device details visible in the controller:
 
 The global view shows the full site summary including device counts, client counts, and alert status across all managed sites.
 
-![Global dashboard](screenshots/global_dashboard.png)
+![Global dashboard](screenshots/04-global-dashboard.png)
 
 ---
 
@@ -125,7 +122,7 @@ The global view shows the full site summary including device counts, client coun
 
 The topology view maps the EAP650 and its connected clients. Five clients visible: `65TCLRokuTV`, `58HisenseRokuTV`, `HS300`, `iPad`, and `Henry-s-S25-Ultra`. Most are on 5GHz; the HS300 smart plug is on 2.4GHz. The AP is shown without a gateway since OPNsense handles routing separately and was not adopted into Omada.
 
-![Network topology](screenshots/Topology.png)
+![Network topology](screenshots/06-network-topology.png)
 
 ---
 
@@ -154,15 +151,11 @@ Controller-managed SSIDs override anything configured directly on the AP, which 
 
 ## Repository Structure
 
-```
-omada-ap-controller-lab/
 ├── screenshots/
-│   ├── Docker_Omada_Controller.png
+│   ├── 01-docker-omada-controller.png
 │   ├── 02-docker-containers-before-host-mode.png
 │   ├── 03-docker-containers-after-host-mode.png
-│   ├── global_dashboard.png
-│   ├── AP_Connected.png
-│   ├── Topology.png
-│   └── omada-controller-host-network-run-command.png
-└── README.md
-```
+│   ├── 04-global-dashboard.png
+│   ├── 05-ap-connected.png
+│   ├── 06-network-topology.png
+│   └── 07-host-network-run-command.png
